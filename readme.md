@@ -74,6 +74,6 @@ The provided scripts make setup on Windows straightforward.
     ```bash
     python app.py
     ```
-The API will now be running and accessible at `http://<your-machine-ip>:5002`.
+The API will now be running and accessible at `http://<your-machine-ip>:5004`.
 
 
