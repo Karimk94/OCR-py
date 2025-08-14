@@ -42,12 +42,8 @@ def translate_image():
     file.save(filepath)
 
     try:
-        # Use Pytesseract to perform OCR on the image. Tesseract is excellent
-        # at handling full-page layouts with paragraphs and mixed fonts.
-        extracted_text = pytesseract.image_to_string(Image.open(filepath), lang='eng')
+        extracted_text = pytesseract.image_to_string(Image.open(filepath), lang='eng+ara')
 
-        # Return the extracted text in the response. I've used the key 'text'
-        # as it is more descriptive of the content.
         return jsonify({'caption': extracted_text.strip()})
 
     except pytesseract.TesseractNotFoundError:
