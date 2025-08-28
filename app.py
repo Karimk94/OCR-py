@@ -44,7 +44,7 @@ def translate_image():
     try:
         extracted_text = pytesseract.image_to_string(Image.open(filepath), lang='eng+ara')
 
-        return jsonify({'caption': extracted_text.strip()})
+        return jsonify({'text': extracted_text.strip()})
 
     except pytesseract.TesseractNotFoundError:
         error_msg = (
