@@ -1,68 +1,76 @@
-import os
 from flask import Flask, request, jsonify
-from werkzeug.utils import secure_filename
 from PIL import Image
 import pytesseract
+import cv2
+import numpy as np
+import os
+import fitz
 
-# --- Configuration ---
-pytesseract.pytesseract.tesseract_cmd = r'.\tesseract\tesseract.exe'
+# --- Tesseract Path Configuration ---
+# Set the path to the Tesseract executable
+pytesseract.pytesseract.tesseract_cmd = os.path.join(os.path.dirname(__file__), 'tesseract', 'tesseract.exe')
+tessdata_dir_config = f'--tessdata-dir "{os.path.join(os.path.dirname(__file__), "tesseract", "tessdata")}"'
 
-# Initialize the Flask application
 app = Flask(__name__)
 
-# Configure a folder for temporary uploads
-UPLOAD_FOLDER = 'uploads'
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-
-# Define allowed file extensions
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'bmp', 'tiff'}
-
-def allowed_file(filename):
-    """Checks if the uploaded file has an allowed extension."""
-    return '.' in filename and \
-           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+def preprocess_image(image):
+    """Converts image to grayscale, applies thresholding, and removes noise."""
+    gray = cv2.cvtColor(np.array(image), cv2.COLOR_BGR2GRAY)
+    # Apply adaptive thresholding for better results on varied lighting
+    processed_img = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2)
+    return processed_img
 
 @app.route('/translate_image', methods=['POST'])
 def translate_image():
-    """
-    API endpoint that receives an image file, extracts text using local Tesseract OCR,
-    and returns the extracted text.
-    """
     if 'image_file' not in request.files:
-        return jsonify({'error': 'No image file provided.'}), 400
+        return jsonify({'error': 'No image file provided'}), 400
 
     file = request.files['image_file']
-
-    if file.filename == '' or not allowed_file(file.filename):
-        return jsonify({'error': 'Invalid or no selected file.'}), 400
-
-    filename = secure_filename(file.filename)
-    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-    file.save(filepath)
+    if file.filename == '':
+        return jsonify({'error': 'No selected file'}), 400
 
     try:
-        extracted_text = pytesseract.image_to_string(Image.open(filepath), lang='eng+ara')
-
-        return jsonify({'text': extracted_text.strip()})
-
-    except pytesseract.TesseractNotFoundError:
-        error_msg = (
-            "Tesseract is not installed or not in your system's PATH. "
-            "Please install Tesseract OCR (a system-level application) and "
-            "ensure its location is in the PATH or set explicitly in app.py."
-        )
-        print(f"ERROR: {error_msg}")
-        return jsonify({'error': error_msg}), 500
+        image = Image.open(file.stream).convert("RGB")
+        processed_image = preprocess_image(image)
+        
+        # Use both English and Arabic language models
+        custom_config = r'-l eng+ara ' + tessdata_dir_config
+        text = pytesseract.image_to_string(processed_image, config=custom_config)
+        
+        # Clean up the extracted text
+        cleaned_text = ' '.join(text.split())
+        
+        return jsonify({'text': cleaned_text})
     except Exception as e:
-        error_msg = "An error occurred during Tesseract OCR processing."
-        print(f"ERROR: {error_msg}\nDetails: {e}")
-        return jsonify({'error': error_msg, 'details': str(e)}), 500
-    finally:
-        # Clean up by removing the uploaded file
-        if os.path.exists(filepath):
-            os.remove(filepath)
+        return jsonify({'error': f'An error occurred: {str(e)}'}), 500
+
+@app.route('/process_pdf', methods=['POST'])
+def process_pdf():
+    """Extracts text directly from a PDF file."""
+    if 'pdf_file' not in request.files:
+        return jsonify({'error': 'No PDF file provided'}), 400
+
+    file = request.files['pdf_file']
+    if file.filename == '':
+        return jsonify({'error': 'No selected file'}), 400
+
+    try:
+        pdf_bytes = file.read()
+        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+        
+        full_text = ""
+        for page in doc:
+            full_text += page.get_text() + "\n"
+            
+        doc.close()
+
+        # Clean up the extracted text
+        cleaned_text = ' '.join(full_text.split())
+        
+        return jsonify({'text': cleaned_text})
+
+    except Exception as e:
+        return jsonify({'error': f'Failed to process PDF: {str(e)}'}), 500
 
 if __name__ == '__main__':
-    # Running on 0.0.0.0 makes the API accessible from other machines
-    app.run(host='0.0.0.0', port=5004, debug=False)
+    app.run(host='0.0.0.0', port=5004, debug=True)

@@ -2,3 +2,6 @@ Flask
 werkzeug
 Pillow
 pytesseract
+PyMuPDF
+opencv-python
+numpy
