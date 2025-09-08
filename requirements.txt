@@ -5,3 +5,4 @@ pytesseract
 PyMuPDF
 opencv-python
 numpy
+flask-cors
