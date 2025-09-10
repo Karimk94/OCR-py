@@ -8,30 +8,24 @@ import fitz
 import logging
 from flask_cors import CORS
 from werkzeug.serving import run_simple
+import io
 
 # --- Basic Setup ---
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 CORS(app, resources={r"/*": {"origins": "*"}})
 
-
 # --- Tesseract Path Configuration ---
-# Set the path to the Tesseract executable
 pytesseract.pytesseract.tesseract_cmd = os.path.join(os.path.dirname(__file__), 'tesseract', 'tesseract.exe')
-tessdata_dir_config = f'--tessdata-dir "{os.path.join(os.path.dirname(__file__), "tesseract", "tessdata")}"'
-
-app = Flask(__name__)
 
 def preprocess_image(image):
     """Converts image to grayscale, applies thresholding, and removes noise."""
-    # The image from PIL needs to be converted to a NumPy array for OpenCV
     img_np = np.array(image)
-    # Convert RGB (from PIL) to BGR (for OpenCV)
     img_bgr = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
     gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
-    # Apply adaptive thresholding for better results on varied lighting
     processed_img = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2)
     return processed_img
+
 
 @app.route('/ocr', methods=['POST'])
 def ocr():
@@ -48,7 +42,6 @@ def ocr():
         processed_image = preprocess_image(image)
         
         # Use both English and Arabic language models
-        # The TESSDATA_PREFIX env var makes the tessdata_dir_config redundant
         custom_config = r'-l eng+ara'
         text = pytesseract.image_to_string(processed_image, config=custom_config)
         
@@ -112,6 +105,61 @@ def process_pdf():
 
     except Exception as e:
         logging.error("An error occurred during PDF processing", exc_info=True)
+        return jsonify({'error': f'Failed to process PDF: {str(e)}'}), 500
+        
+@app.route('/translate_image_stream', methods=['POST'])
+def translate_image_stream():
+    """
+    Handles a single image sent as a raw byte stream.
+    The internal logic mirrors the original /translate_image endpoint.
+    """
+    try:
+        # Read the raw request body into an in-memory buffer
+        image_bytes = request.get_data()
+        if not image_bytes:
+            return jsonify(error="No data received in request body"), 400
+
+        # Use the exact same processing logic as the original endpoint
+        image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+        processed_image = preprocess_image(image)
+        
+        custom_config = r'-l eng+ara'
+        text = pytesseract.image_to_string(processed_image, config=custom_config)
+        
+        cleaned_text = ' '.join(text.split())
+        
+        return jsonify({'text': cleaned_text})
+    except Exception as e:
+        logging.error("An error occurred during image stream processing", exc_info=True)
+        return jsonify({'error': f'An error occurred: {str(e)}'}), 500
+
+
+@app.route('/process_pdf_stream', methods=['POST'])
+def process_pdf_stream():
+    """
+    Handles a PDF file sent as a raw byte stream.
+    The internal logic mirrors the original /process_pdf endpoint.
+    """
+    try:
+        # Read the raw request body
+        pdf_bytes = request.get_data()
+        if not pdf_bytes:
+            return jsonify(error="No data received in request body"), 400
+        
+        # Use the exact same processing logic as the original endpoint
+        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+        
+        full_text = ""
+        for page in doc:
+            full_text += page.get_text() + "\n"
+        doc.close()
+
+        cleaned_text = ' '.join(full_text.split())
+        
+        return jsonify({'text': cleaned_text})
+
+    except Exception as e:
+        logging.error("An error occurred during PDF stream processing", exc_info=True)
         return jsonify({'error': f'Failed to process PDF: {str(e)}'}), 500
 
 if __name__ == '__main__':
