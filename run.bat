@@ -1,21 +1,9 @@
 @echo off
-REM ============================================================================
-REM  Run script for the Local Image to Text API
-REM
-REM  This script will activate the virtual environment and start the Flask API.
-REM ============================================================================
-
 echo Activating virtual environment...
 call venv\Scripts\activate.bat
-
 echo.
-echo Starting the Image to Text API server...
-echo Press CTRL+C to stop the server.
+echo Starting the OCR server...
+echo This service will run on http://127.0.0.1:5004
+echo Leave this window open. Press Ctrl+C to stop the server.
 echo.
-
-REM Run the Flask application
 python app.py
-
-echo.
-echo Server has been stopped.
-pause
